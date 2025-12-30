@@ -1,0 +1,93 @@
+name: Dump Global Update
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  dump-global-update:
+    environment: "GitHub Action"
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+        
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.13.x'
+
+      - name: Install Dependencies
+        run: pip install -r requirements.txt
+
+      - name: Get APK & Dumper
+        run: python getApkData.py --region global
+      
+      - name: Configure Git
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+      - name: Run Dumper
+        run: python getGlobalVersion.py
+
+      - name: Check config.json changed
+        id: check_diff
+        shell: bash
+        run: |
+          config_file="global_data/config.json"
+          changed_flag=false
+
+          if git ls-tree -r HEAD --name-only | grep -Fxq "$config_file"; then
+            if ! git diff --quiet HEAD -- "$config_file"; then
+              echo "$config_file is different, apply changes."
+              changed_flag=true
+            else
+              echo "$config_file is identical, no changes needed."
+              # changed_flag remains false
+            fi
+          else
+            echo "$config_file does not exist. Added the file."
+            changed_flag=true
+          fi
+
+          echo "changed=$changed_flag" >> $GITHUB_OUTPUT
+
+      - name: Configure Git LFS
+        if: steps.check_diff.outputs.changed == 'true'
+        run: |
+          git lfs install
+          
+          git lfs track "global_data/cs/**"
+          git lfs track "global_data/dll/**"
+          git lfs track "global_data/ida_disassember/**"
+          git lfs track "global_data/*.dat"
+          git lfs track "global_data/*.so"
+
+          git add .gitattributes
+
+      - name: Commit and Push Update
+        if: steps.check_diff.outputs.changed == 'true'
+        shell: bash
+        run: |
+          game_version=$(jq -r '.latest_build_version' global_data/config.json)
+          resource_path=$(jq -r '.patch.resource_path' global_data/config.json)
+          catalog_id=$(echo "$resource_path" | sed -n 's#.*/com\.nexon\.bluearchive/\([^/]*\)/.*#\1#p')
+          catalog_version=$(jq -r '.patch_version' global_data/resources.json)
+          
+          commit_msg="${game_version}_${catalog_version}_${catalog_id}"
+          
+          git add global_data/*
+          git commit -m "$commit_msg"
+          git push origin main

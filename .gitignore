@@ -1,0 +1,7 @@
+.venv
+__pycache__
+*_download
+*_dumped
+*_extracted
+dump_lib
+apk_downloads
