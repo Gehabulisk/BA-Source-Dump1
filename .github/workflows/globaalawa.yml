@@ -1,0 +1,111 @@
+name: Global Dump and Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  dump-and-release:
+    environment: "GitHub Action"
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+        
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.13.x'
+
+      - name: Install Dependencies
+        run: pip install -r requirements.txt
+
+      - name: Get APK & Dumper
+        run: python getApkData.py --region global
+      
+      - name: Configure Git
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+      - name: Run Dumper
+        run: python getGlobalVersion.py
+
+      - name: Get version string for release
+        id: get_version
+        shell: bash
+        run: |
+          game_version=$(jq -r '.latest_build_version' global_data/config.json)
+          resource_path=$(jq -r '.patch.resource_path' global_data/config.json)
+          catalog_id=$(echo "$resource_path" | sed -n 's#.*/com\.nexon\.bluearchive/\([^/]*\)/.*#\1#p')
+          catalog_version=$(jq -r '.patch_version' global_data/resources.json)
+          
+          version_string="${game_version}_${catalog_version}_${catalog_id}"
+          echo "version=$version_string" >> $GITHUB_OUTPUT
+          echo "Version string: $version_string"
+
+      - name: Create dump data zip
+        shell: bash
+        run: |
+          echo "=== Creating dump data zip archive ==="
+          7z a -tzip global_dump_data.zip global_data/*
+          echo "=== Zip file created ==="
+          ls -lh global_dump_data.zip
+
+      - name: List and prepare files for release
+        shell: bash
+        run: |
+          echo "=== Current directory structure ==="
+          ls -la
+          
+          echo "=== Looking for APK and XAPK files ==="
+          find . -name "*.apk" -type f | while read file; do
+            echo "Found APK: $file"
+          done
+          
+          find . -name "*.xapk" -type f | while read file; do
+            echo "Found XAPK: $file"
+          done
+          
+          # 复制所有apk和xapk文件到工作目录根目录，方便上传
+          echo "=== Copying files to root directory ==="
+          find . -name "*.apk" -type f -exec cp {} . \;
+          find . -name "*.xapk" -type f -exec cp {} . \;
+          
+          echo "=== Files in root directory ==="
+          ls -la *.apk *.xapk global_dump_data.zip 2>/dev/null || echo "No files found"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.get_version.outputs.version }}
+          release_name: Release ${{ steps.get_version.outputs.version }}
+          draft: false
+          prerelease: false
+          generate_release_notes: false
+          body: |
+            Automated release for version ${{ steps.get_version.outputs.version }}
+            
+            Contains:
+            - APK and XAPK files
+            - Complete dump data (global_dump_data.zip)
+            
+            Version details:
+            - Game Version: ${{ fromJSON(steps.get_version.outputs.version).split('_')[0] }}
+            - Catalog Version: ${{ fromJSON(steps.get_version.outputs.version).split('_')[1] }}
+            - Catalog ID: ${{ fromJSON(steps.get_version.outputs.version).split('_')[2] }}
+          files: |
+            *.apk
+            *.xapk
+            global_dump_data.zip
