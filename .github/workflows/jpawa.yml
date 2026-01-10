@@ -1,0 +1,107 @@
+name: JP Dump and Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  dump-and-release:
+    environment: "GitHub Action"
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+        
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.13.x'
+
+      - name: Install Dependencies
+        run: pip install -r requirements.txt
+
+      - name: Get APK & Dumper
+        run: python getApkData.py --region jp
+      
+      - name: Configure Git
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+      - name: Run Dumper
+        run: python getJPVersion.py
+
+      - name: Get version string for release
+        id: get_version
+        shell: bash
+        run: |
+          raw_game_url=$(jq -r '.ServerInfoDataUrl' jp_data/config.json)
+          raw_catalog=$(jq -r '.ConnectionGroups[0].OverrideConnectionGroups | .[-1].AddressablesCatalogUrlRoot' jp_data/config.json)
+          
+          game_url=$(echo "$raw_game_url" | sed -n 's#.*/\([^/]*\)\.json#\1#p')
+          catalog=$(echo "$raw_catalog" | sed -n 's#.*/\([^/]*\)$#\1#p')
+          
+          version_string="${game_url}_${catalog}"
+          echo "version=$version_string" >> $GITHUB_OUTPUT
+          echo "Version string: $version_string"
+
+      - name: Create dump data zip
+        shell: bash
+        run: |
+          echo "=== Creating dump data zip archive ==="
+          7z a -tzip jp_dump_data.zip jp_data/*
+          echo "=== Zip file created ==="
+          ls -lh jp_dump_data.zip
+
+      - name: List and prepare files for release
+        shell: bash
+        run: |
+          echo "=== Current directory structure ==="
+          ls -la
+          
+          echo "=== Looking for APK and XAPK files ==="
+          find . -name "*.apk" -type f | while read file; do
+            echo "Found APK: $file"
+          done
+          
+          find . -name "*.xapk" -type f | while read file; do
+            echo "Found XAPK: $file"
+          done
+          
+          # 复制所有apk和xapk文件到工作目录根目录，方便上传
+          echo "=== Copying files to root directory ==="
+          find . -name "*.apk" -type f -exec cp {} . \;
+          find . -name "*.xapk" -type f -exec cp {} . \;
+          
+          echo "=== Files in root directory ==="
+          ls -la *.apk *.xapk jp_dump_data.zip 2>/dev/null || echo "No files found"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.get_version.outputs.version }}
+          release_name: Release ${{ steps.get_version.outputs.version }}
+          draft: false
+          prerelease: false
+          generate_release_notes: false
+          body: |
+            Automated release for version ${{ steps.get_version.outputs.version }}
+            
+            Contains:
+            - APK and XAPK files
+            - Complete dump data (jp_dump_data.zip)
+          files: |
+            *.apk
+            *.xapk
+            jp_dump_data.zip
