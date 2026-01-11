@@ -100,11 +100,6 @@ jobs:
             Contains:
             - APK and XAPK files
             - Complete dump data (global_dump_data.zip)
-            
-            Version details:
-            - Game Version: ${{ fromJSON(steps.get_version.outputs.version).split('_')[0] }}
-            - Catalog Version: ${{ fromJSON(steps.get_version.outputs.version).split('_')[1] }}
-            - Catalog ID: ${{ fromJSON(steps.get_version.outputs.version).split('_')[2] }}
           files: |
             *.apk
             *.xapk
