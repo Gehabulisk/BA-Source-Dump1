@@ -42,6 +42,20 @@ jobs:
       - name: Run Dumper
         run: python getJPVersion.py
 
+      - name: Verify generated files
+        shell: bash
+        run: |
+          echo "=== Checking generated files in jp_data ==="
+          ls -la jp_data/
+          echo "=== Looking for decrypted-global-metadata.dat ==="
+          find jp_data -name "decrypted-global-metadata.dat" -type f
+          echo "=== File size ==="
+          if [ -f "jp_data/decrypted-global-metadata.dat" ]; then
+            ls -lh "jp_data/decrypted-global-metadata.dat"
+          else
+            echo "decrypted-global-metadata.dat not found!"
+          fi
+
       - name: Get version string for release
         id: get_version
         shell: bash
@@ -60,7 +74,13 @@ jobs:
         shell: bash
         run: |
           echo "=== Creating dump data zip archive ==="
-          7z a -tzip jp_dump_data.zip jp_data/*
+          # 确保进入正确的目录
+          cd jp_data
+          # 明确列出所有文件打包
+          7z a -tzip ../jp_dump_data.zip *
+          cd ..
+          echo "=== Zip file contents ==="
+          7z l jp_dump_data.zip | grep -i "decrypted\|metadata\|\.dat"
           echo "=== Zip file created ==="
           ls -lh jp_dump_data.zip
 
@@ -101,6 +121,7 @@ jobs:
             Contains:
             - APK and XAPK files
             - Complete dump data (jp_dump_data.zip)
+            - Decrypted global-metadata.dat
           files: |
             *.apk
             *.xapk
