@@ -2,6 +2,7 @@ import os, platform
 import json
 import requests
 import shutil
+import subprocess  # 添加这个导入
 
 from lib.GlobalCatalogFetcher import catalog_url
 from lib.Il2CppInspectorDumper import Il2CppInspectorDumperCLI
@@ -32,6 +33,26 @@ if __name__ == "__main__":
     il2cppDumper.dump(data_dir)
     il2cppDumper.dump(os.path.join(data_dir, "ida_disassember"), use_dissambler=True, dissambler_option="IDA")
     # il2cppDumper.dump(os.path.join(data_dir, "ghidra_disassember"), use_dissambler=True, dissambler_option="Ghidra")
+
+    # 新增：输出解密的 global-metadata.dat
+    print("Outputting decrypted global-metadata.dat...")
+    decrypted_metadata_path = os.path.join(data_dir, "decrypted-global-metadata.dat")
+    
+    cmd = [
+        il2cpp_exec_path,
+        "-i", libil2cpp_path,
+        "-m", metadata_path,
+        "--metadata-out", decrypted_metadata_path,
+        "--select-outputs"  # 只输出 metadata，不生成其他文件
+    ]
+    
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        print(f"Successfully decrypted metadata to: {decrypted_metadata_path}")
+    except subprocess.CalledProcessError as e:
+        print(f"Error decrypting metadata: {e.stderr}")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
 
     # Generate fbs both for V1 and V2
     print("Generating fbs...")
