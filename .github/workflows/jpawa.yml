@@ -47,14 +47,18 @@ jobs:
         run: |
           echo "=== Checking generated files in jp_data ==="
           ls -la jp_data/
-          echo "=== Looking for decrypted-global-metadata.dat ==="
-          find jp_data -name "decrypted-global-metadata.dat" -type f
-          echo "=== File size ==="
-          if [ -f "jp_data/decrypted-global-metadata.dat" ]; then
-            ls -lh "jp_data/decrypted-global-metadata.dat"
-          else
-            echo "decrypted-global-metadata.dat not found!"
-          fi
+          echo "=== Looking for all .dat files ==="
+          find jp_data -name "*.dat" -type f
+          echo "=== File sizes ==="
+          find jp_data -name "*.dat" -type f -exec ls -lh {} \;
+
+      - name: Copy all .dat files to root directory
+        shell: bash
+        run: |
+          echo "=== Copying all .dat files to root directory ==="
+          find jp_data -name "*.dat" -type f -exec cp {} . \;
+          echo "=== Copied .dat files ==="
+          ls -la *.dat
 
       - name: Get version string for release
         id: get_version
@@ -79,10 +83,21 @@ jobs:
           # 明确列出所有文件打包
           7z a -tzip ../jp_dump_data.zip *
           cd ..
-          echo "=== Zip file contents ==="
-          7z l jp_dump_data.zip | grep -i "decrypted\|metadata\|\.dat"
+          echo "=== Zip file contents (showing .dat files) ==="
+          7z l jp_dump_data.zip | grep -i "\.dat"
           echo "=== Zip file created ==="
           ls -lh jp_dump_data.zip
+
+      - name: Create dat files zip
+        shell: bash
+        run: |
+          echo "=== Creating dat files zip archive ==="
+          # 打包所有.dat文件
+          7z a -tzip jp_dat_files.zip *.dat
+          echo "=== Dat files zip contents ==="
+          7z l jp_dat_files.zip
+          echo "=== Dat files zip created ==="
+          ls -lh jp_dat_files.zip
 
       - name: List and prepare files for release
         shell: bash
@@ -103,9 +118,10 @@ jobs:
           echo "=== Copying files to root directory ==="
           find . -name "*.apk" -type f -exec cp {} . \;
           find . -name "*.xapk" -type f -exec cp {} . \;
+          find . -name "*.dat" -type f -exec cp {} . \;
           
           echo "=== Files in root directory ==="
-          ls -la *.apk *.xapk jp_dump_data.zip 2>/dev/null || echo "No files found"
+          ls -la *.apk *.xapk jp_dump_data.zip jp_dat_files.zip *.dat 2>/dev/null || echo "No files found"
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -121,8 +137,15 @@ jobs:
             Contains:
             - APK and XAPK files
             - Complete dump data (jp_dump_data.zip)
-            - Decrypted global-metadata.dat
+            - All .dat files separately (jp_dat_files.zip)
+            - Individual .dat files for easy access
+            
+            DAT files included:
+            - global-metadata.dat (original)
+            - decrypted-global-metadata.dat (decrypted)
           files: |
             *.apk
             *.xapk
             jp_dump_data.zip
+            jp_dat_files.zip
+            *.dat
